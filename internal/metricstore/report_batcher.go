@@ -25,8 +25,10 @@ type reportTrafficValues struct {
 	timestamp   time.Time
 	hasUp       bool
 	totalUp     int64
+	totalUpAt   time.Time
 	hasDown     bool
 	totalDown   int64
+	totalDownAt time.Time
 }
 
 var (
@@ -37,8 +39,11 @@ var (
 const (
 	reportBatchInterval     = 3 * time.Second
 	reportBatchQueueSize    = 512
+	pingBatchQueueSize      = 4096
 	pingBatchMaxRecords     = 512
 	reportBatchWriteTimeout = 10 * time.Second
+	// Longer gaps have no reliable per-bucket traffic attribution.
+	maxTrafficReportGap = 15 * time.Minute
 )
 
 var (
@@ -77,7 +82,7 @@ func StartReportBatcher() {
 	}
 	worker := &reportBatchWorker{
 		queue:     make(chan v2.Report, reportBatchQueueSize),
-		pingQueue: make(chan models.PingRecord, reportBatchQueueSize),
+		pingQueue: make(chan models.PingRecord, pingBatchQueueSize),
 		requests:  make(chan reportBatchRequest, 1),
 		done:      make(chan struct{}),
 	}
@@ -208,8 +213,8 @@ func (w *reportBatchWorker) run() {
 	for {
 		select {
 		case request := <-w.requests:
-			pending = append(pending, drainReportQueue(w.queue, reportBatchQueueSize)...)
-			pendingPings = append(pendingPings, drainPingQueue(w.pingQueue, reportBatchQueueSize)...)
+			pending = append(pending, drainQueue(w.queue, reportBatchQueueSize)...)
+			pendingPings = append(pendingPings, drainQueue(w.pingQueue, pingBatchQueueSize)...)
 			err := errors.Join(
 				writePendingReports(request.ctx, &pending),
 				writePendingPingRecords(request.ctx, &pendingPings),
@@ -224,11 +229,11 @@ func (w *reportBatchWorker) run() {
 			}
 			request.done <- err
 		case <-ticker.C:
-			pendingPings = append(pendingPings, drainPingQueue(w.pingQueue, reportBatchQueueSize)...)
+			pendingPings = append(pendingPings, drainQueue(w.pingQueue, pingBatchQueueSize)...)
 			if err := writePendingPingRecords(context.Background(), &pendingPings); err != nil {
 				logger.Errorf("metricstore", "failed to flush ping batch: %v", err)
 			}
-			pending = append(pending, drainReportQueue(w.queue, reportBatchQueueSize)...)
+			pending = append(pending, drainQueue(w.queue, reportBatchQueueSize)...)
 			if err := writePendingReports(context.Background(), &pending); err != nil {
 				logger.Errorf("metricstore", "failed to flush metric report batch: %v", err)
 			}
@@ -253,69 +258,36 @@ func (w *reportBatchWorker) enqueuePing(ctx context.Context, record models.PingR
 	}
 }
 
-func drainReportQueue(queue <-chan v2.Report, limit int) []v2.Report {
-	if limit <= 0 {
+// drainQueue takes up to limit queued items without blocking.
+func drainQueue[T any](queue <-chan T, limit int) []T {
+	n := min(len(queue), limit)
+	if n <= 0 {
 		return nil
 	}
-	capacity := len(queue)
-	if capacity > limit {
-		capacity = limit
-	}
-	if capacity == 0 {
-		return nil
-	}
-	reports := make([]v2.Report, 0, capacity)
-	for len(reports) < limit {
+	items := make([]T, 0, n)
+	for len(items) < limit {
 		select {
-		case report := <-queue:
-			reports = append(reports, report)
+		case item := <-queue:
+			items = append(items, item)
 		default:
-			return reports
+			return items
 		}
 	}
-	return reports
+	return items
 }
 
-func drainPingQueue(queue <-chan models.PingRecord, limit int) []models.PingRecord {
-	if limit <= 0 {
-		return nil
-	}
-	capacity := len(queue)
-	if capacity > limit {
-		capacity = limit
-	}
-	if capacity == 0 {
-		return nil
-	}
-	records := make([]models.PingRecord, 0, capacity)
-	for len(records) < limit {
-		select {
-		case record := <-queue:
-			records = append(records, record)
-		default:
-			return records
-		}
-	}
-	return records
-}
-
+// writePendingReports commits all pending reports as one batch and keeps them
+// for the next attempt when the write fails.
 func writePendingReports(ctx context.Context, pending *[]v2.Report) error {
 	if len(*pending) == 0 {
 		return nil
 	}
-	batchSize := len(*pending)
-	for len(*pending) > 0 {
-		if batchSize > len(*pending) {
-			batchSize = len(*pending)
-		}
-		writeCtx, cancel := context.WithTimeout(ctx, reportBatchWriteTimeout)
-		_, err := writeReportBatch(writeCtx, (*pending)[:batchSize])
-		cancel()
-		if err != nil {
-			return err
-		}
-		*pending = (*pending)[batchSize:]
+	writeCtx, cancel := context.WithTimeout(ctx, reportBatchWriteTimeout)
+	defer cancel()
+	if _, err := writeReportBatch(writeCtx, *pending); err != nil {
+		return err
 	}
+	*pending = (*pending)[:0]
 	return nil
 }
 
@@ -369,18 +341,20 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 			state.mu.Unlock()
 		}
 		if !values.initialized {
-			totalUp, hasUp, err := latestReportCounter(ctx, s, MetricNetTotalUp, report.UUID, report.UpdatedAt)
+			totalUp, hasUp, err := latestReportPoint(ctx, s, MetricNetTotalUp, report.UUID, report.UpdatedAt)
 			if err != nil {
 				logger.Errorf("metricstore", "failed to restore previous upload counter for %s: %v", report.UUID, err)
 			} else {
-				values.totalUp = totalUp
+				values.totalUp = int64(totalUp.Value)
+				values.totalUpAt = totalUp.Timestamp
 				values.hasUp = hasUp
 			}
-			totalDown, hasDown, err := latestReportCounter(ctx, s, MetricNetTotalDown, report.UUID, report.UpdatedAt)
+			totalDown, hasDown, err := latestReportPoint(ctx, s, MetricNetTotalDown, report.UUID, report.UpdatedAt)
 			if err != nil {
 				logger.Errorf("metricstore", "failed to restore previous download counter for %s: %v", report.UUID, err)
 			} else {
-				values.totalDown = totalDown
+				values.totalDown = int64(totalDown.Value)
+				values.totalDownAt = totalDown.Timestamp
 				values.hasDown = hasDown
 			}
 			values.initialized = true
@@ -396,19 +370,21 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 			report.UpdatedAt = values.timestamp.Add(time.Millisecond)
 		}
 		trafficUp := int64(0)
-		if values.hasUp {
+		if values.hasUp && !values.totalUpAt.IsZero() && report.UpdatedAt.Sub(values.totalUpAt) <= maxTrafficReportGap {
 			trafficUp = TrafficCounterDelta(report.Network.TotalUp, values.totalUp)
 		}
 		trafficDown := int64(0)
-		if values.hasDown {
+		if values.hasDown && !values.totalDownAt.IsZero() && report.UpdatedAt.Sub(values.totalDownAt) <= maxTrafficReportGap {
 			trafficDown = TrafficCounterDelta(report.Network.TotalDown, values.totalDown)
 		}
 		points = append(points, reportMetricPoints(report, trafficUp, trafficDown)...)
 		values.timestamp = report.UpdatedAt
 		values.hasUp = true
 		values.totalUp = report.Network.TotalUp
+		values.totalUpAt = report.UpdatedAt
 		values.hasDown = true
 		values.totalDown = report.Network.TotalDown
+		values.totalDownAt = report.UpdatedAt
 		pendingStates[state] = values
 		prepared[i] = report
 	}
