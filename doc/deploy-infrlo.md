@@ -69,4 +69,3 @@ Komari 是 Go 预编译单二进制程序，**前端已内嵌**，运行时只�
 |---|---|
 | `app.py` | Python 引导脚本：下载二进制 → exec 启动 komari |
 | `requirements.txt` | 空依赖占位，兼容平台默认构建命令 |
-| `Dockerfile` | 原有 Docker 部署方式，与 infrlo 方案互不影响 |

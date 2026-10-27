@@ -48,8 +48,6 @@ removed in commit "Remove upstream Komari sources, keep runtime-only bootstrap":
 |---|---|
 | `app.py` | Bootstrap: download binary → exec `komari server` |
 | `requirements.txt` | Empty placeholder so the platform's default `pip install -r requirements.txt` build command succeeds |
-| `Dockerfile` | Alternative Docker deployment (python:3.12-slim + app.py) |
-| `.dockerignore` | Keeps the Docker build context to the files above |
 | `doc/deploy-infrlo.md` | infrlo deployment guide |
 | `README.md` / `README_zh-cn.md` | This documentation |
 | `NOTICE` / `LICENSE` | Upstream attributions and MIT license kept for attribution |

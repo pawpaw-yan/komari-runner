@@ -44,8 +44,6 @@ infrlo 平台的部署细节（构建/运行命令、数据持久化、WebSocket
 |---|---|
 | `app.py` | 引导脚本：下载二进制 → exec 启动 komari |
 | `requirements.txt` | 空依赖占位，兼容平台默认构建命令 `pip install -r requirements.txt` |
-| `Dockerfile` | 备选 Docker 部署方式（python:3.12-slim + app.py） |
-| `.dockerignore` | 把 Docker 构建上下文限制为上述文件 |
 | `doc/deploy-infrlo.md` | infrlo 部署指南 |
 | `README.md` / `README_zh-cn.md` | 本文档 |
 | `NOTICE` / `LICENSE` | 保留上游署名与 MIT 许可证 |

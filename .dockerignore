@@ -1,7 +1,0 @@
-# The runtime bootstrap needs only these files; everything else is excluded
-# from the Docker build context.
-*
-!app.py
-!requirements.txt
-__pycache__/
-*.pyc
