@@ -20,7 +20,7 @@ The optional `--download-only` flag downloads the binary and exits, useful for
 pre-downloading during the platform's build phase:
 
 ```
-pip install -r requirements.txt && (python3 app.py --download-only || python app.py --download-only)
+pip install -r requirements.txt && (python3 app.py --download-only || true)
 ```
 
 Run command: `python3 app.py || python app.py`

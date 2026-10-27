@@ -1,34 +1,57 @@
 # Komari 部署到 infrlo 容器
 
-infrlo 容器只提供两个配置项：**Build Command** 和 **Run Command**（默认值分别为
-`pip install -r requirements.txt` 和 `python app.py`）。
+infrlo 平台的 Python 应用默认提供两条命令：**Build Command**
+（`pip install -r requirements.txt`）和 **Run Command**（`python app.py`）。
 
-Komari 是 Go 预编译单二进制程序，**前端已内嵌**，运行时只依赖一个可写的工作目录，
-因此采用「Python 引导脚本」方案：`app.py` 在构建期/运行期从 GitHub Releases 下载
-对应架构的二进制，然后用 `execv` 把 `python app.py` 进程替换为 `./komari server`，
-平台两条命令基本保持默认即可。
+Komari 是 Go 预编译单二进制程序，前端已内嵌，运行时只依赖一个可写的工作目录。
+`app.py` 在运行期从 GitHub Releases 下载对应架构的二进制（实测约 2 秒），
+然后用 `execv` 把 `python app.py` 进程替换为 `./komari server`。
 
-## 配置
+**两条命令保持平台默认即可，无需修改。**
 
-| 配置项 | 填写内容 |
-|---|---|
-| Build Command | `pip install -r requirements.txt && (python3 app.py --download-only \|\| python app.py --download-only)` |
-| Run Command | `python3 app.py \|\| python app.py` |
-| 端口 | komari 默认监听 `0.0.0.0:25774`；若平台注入 `PORT` 环境变量则自动跟随 |
+## 实测记录（2026-10-27，komari 1.6.1）
 
-> **注意用 `python3`**：infrlo 的 Debian 系环境没有 `python` 命令（构建日志会报
-> `/bin/sh: 1: python: not found`），`pip` 能用不代表 `python` 存在。
-> 上面命令已做 `python3 → python` 双重兜底。
+- Run Command 用平台默认 `python app.py` 可用：运行环境有 `python` 命令
+  （构建环境没有，见下文「构建日志里可以忽略的 ERR」）。
+- 运行期下载 `komari-linux-amd64`（28.6MB）约 2 秒完成，无需构建期预下载。
+- komari 正常启动并监听 `0.0.0.0:25774`。
 
-> 即使 Build Command 里的下载步骤失败也能部署（运行期会重试），
-> 但建议构建期预下载，启动更快，也不依赖运行环境的外网连通性。
+## 端口与 Bad Gateway（关键）
+
+实测平台未注入 `PORT` 环境变量，komari 按默认值监听 `0.0.0.0:25774`。
+若平台网关转发到别的端口，访问就会返回 **Bad Gateway**。对齐方法（二选一）：
+
+1. 在应用 Settings 里找端口/Port 设置，改成 `25774`；
+2. 或在环境变量里加 `PORT=<平台期望端口>`（如 `PORT=8080`），`app.py` 会自动跟随。
+
+对齐后先用平台分配的 `*.infrlo.com` 域名验证面板能打开，再配自定义域名——
+自定义域名需要在 Settings 里绑定到该应用，否则边缘网关不认识 Host，同样 502。
+
+## 构建日志里可以忽略的 ERR
+
+infrlo 的 buildpack 在构建期会探测 Python 框架，产生与本项目无关的报错。
+**不影响构建与部署**（最终仍是 Build succeeded / Deployment Successful）：
+
+- `from mango import create_asgi_app`、`ModuleNotFoundError: No module named 'quart'`
+  ——平台默认模板（mango/quart）的探测。本项目不是 Python Web 应用，无需理会，
+  也无法从仓库侧消除。
+- `/bin/sh: 1: python: not found` ——构建环境没有 `python` 命令（只有 `python3`）。
+  旧版文档建议的预下载构建命令会触发它；改用平台默认构建命令后即不再出现。
+
+如仍想在构建期预下载（例如构建机网络更快），Build Command 可用：
+
+```
+pip install -r requirements.txt && (python3 app.py --download-only || true)
+```
+
+`|| true` 保证下载失败也不阻塞部署（运行期会重试）。
 
 ## 可选环境变量（在 infrlo 容器设置页添加）
 
 | 变量 | 说明 | 默认值 |
 |---|---|---|
-| `PORT` | 监听端口（平台通常会自动注入） | `25774` |
-| `KOMARI_VERSION` | 指定版本号，如 `1.5.0-fix1` | 自动取最新 release |
+| `PORT` | 监听端口（平台注入则自动跟随） | `25774` |
+| `KOMARI_VERSION` | 指定版本号，如 `1.6.1` | 自动取最新 release |
 | `KOMARI_DOWNLOAD_URL` | 直接指定二进制下载地址，可填 ghproxy 等镜像加速 | GitHub 官方地址 |
 | `KOMARI_LISTEN` | 监听地址，如 `0.0.0.0:8080` | `0.0.0.0:$PORT` |
 | `KOMARI_DATABASE` | SQLite 文件路径 | `./data/komari.db` |
@@ -36,18 +59,16 @@ Komari 是 Go 预编译单二进制程序，**前端已内嵌**，运行时只�
 
 ## 排错
 
-- **Logs 页完全空白（连 Error 都是 0）**：不代表程序没输出。先点 Refresh 等一两分钟；
-  旧版引导脚本的 print 因 Python 管道块缓冲 + execvp 会被整体丢弃（已修复，需重新部署）。
-  若重新部署后仍空白，说明进程压根没跑起来或立刻崩溃，转下一条。
-- **平台显示 ONLINE / Deployment Successful 但打不开（502）**：只代表容器进程在跑，
-  不代表 komari 已监听。去 Logs 页看真实日志；最常见原因是 `python: not found`
-  （改用 `python3`）、下载二进制失败（设 `KOMARI_DOWNLOAD_URL` 走镜像）或
-  首次下载 20MB+ 二进制尚未完成——默认构建命令不含预下载，首次启动可能要等 1-2 分钟。
-  建议把 Build Command 改为含 `--download-only` 的预下载版本（见上文配置表）。
-- **容器内完全没有 python3** 的兜底方案：不依赖 Python，直接在
-  Build Command 用 curl/wget 拉二进制（x86 容器）：
-  `curl -fsSL -o komari https://github.com/komari-monitor/komari/releases/download/1.5.0-fix1/komari-linux-amd64 && chmod +x komari`
-  Run Command 改为：`./komari server --listen 0.0.0.0:${PORT:-25774}`
+- **Logs 页完全空白**：旧版引导脚本的 print 因 Python 管道块缓冲 + execvp 被
+  整体丢弃（已修复）。重新部署后应能看到 `[komari] downloading ...` →
+  `[komari] starting: ...` → komari 的 `[INFO/SERVER]` 日志。
+- **Bad Gateway**：见上文「端口与 Bad Gateway」，最常见原因是端口没对齐。
+- **下载失败**：设 `KOMARI_DOWNLOAD_URL` 走镜像，例如
+  `https://ghproxy.net/https://github.com/komari-monitor/komari/releases/download/1.6.1/komari-linux-amd64`。
+- **证书错误（ERR_CERT_AUTHORITY_INVALID）**：TLS 由 infrlo 边缘代理负责，与本仓库
+  无关。多为平台尚未给该子域签发证书（等几分钟重试）或访问域名与平台分配的不一致；
+  换网络（如手机流量）访问可排除本地代理拦截。
+  **证书修复前不要点「高级 → 继续前往」登录面板**，否则密码明文暴露。
 
 ## 数据持久化
 
@@ -62,11 +83,10 @@ Komari 是 Go 预编译单二进制程序，**前端已内嵌**，运行时只�
 
 - **WebSocket**：探针（agent）通过 WebSocket 连接面板，部署后需确认平台已开启
   WebSocket 支持，否则探针连不上。
-- **架构自动适配**：`app.py` 会根据容器架构自动选择 `komari-linux-{amd64,arm64,386,loong64,riscv64}`。
-- **下载失败**：若容器访问 GitHub 受限，设置 `KOMARI_DOWNLOAD_URL` 走镜像，
-  例如 `https://ghproxy.net/https://github.com/komari-monitor/komari/releases/download/1.5.0-fix1/komari-linux-amd64`。
-- **探针端**：部署好面板后，在面板后台复制 `install-komari.sh` 命令安装各节点探针，
-  连接地址填 infrlo 分配的域名，WebSocket 端口与面板同端口。
+- **架构自动适配**：`app.py` 会根据容器架构自动选择
+  `komari-linux-{amd64,arm64,386,loong64,riscv64}`。
+- **探针端**：部署好面板后，在面板后台复制安装命令安装各节点探针，
+  连接地址填面板域名，WebSocket 端口与面板同端口。
 
 ## 文件说明
 

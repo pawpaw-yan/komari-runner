@@ -16,7 +16,7 @@
 可选 `--download-only` 参数：只下载二进制后退出，用于构建期预下载：
 
 ```
-pip install -r requirements.txt && (python3 app.py --download-only || python app.py --download-only)
+pip install -r requirements.txt && (python3 app.py --download-only || true)
 ```
 
 运行命令：`python3 app.py || python app.py`
