@@ -103,6 +103,13 @@ def build_cmd() -> list[str]:
 
 def main() -> None:
     download_binary()
+
+    # --download-only: pre-download the binary during the build phase, then exit
+    # so the platform's build command finishes instead of blocking on a server.
+    if "--download-only" in sys.argv:
+        print("[komari] --download-only given, binary ready, exiting")
+        return
+
     cmd = build_cmd()
     print(f"[komari] starting: {' '.join(cmd)}")
     os.execvp(BIN, cmd)
