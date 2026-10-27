@@ -1,68 +1,55 @@
-# Komari
+# Komari 运行时引导（Runtime-only bootstrap）
 
-![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2Fkomari-monitor%2Fkomari&label=&icon=github&color=%23a370f7&message=&style=flat&tz=UTC)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/komari-monitor/komari)
+本仓库已精简为最小运行时引导，用于把 Komari（https://github.com/komari-monitor/komari）
+部署到只提供「构建命令 + 运行命令」的容器平台（如 infrlo / dash.infrlo.com）。
 
-![komari](https://socialify.git.ci/komari-monitor/komari/image?description=1&font=Inter&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2Fkomari-monitor%2Fkomari-web%2Fd54ce1288df41ead08aa19f8700186e68028a889%2Fpublic%2Ffavicon.png&name=1&owner=1&pattern=Plus&pulls=1&stargazers=1&theme=Auto)
+仓库内**不包含**上游 Go 源码，也不编译 Go 项目；上游源码请见原仓库。
 
-[English](./README.md) | [简体中文](./README_zh-cn.md)
+## 工作原理
 
-Komari 是一款轻量级的自托管服务器监控工具，旨在提供简单、高效的服务器性能监控解决方案。它支持通过 Web 界面查看服务器状态，并通过轻量级 Agent 收集数据。
+1. 启动时从 `komari-monitor/komari` 的 GitHub Releases 下载最新预编译二进制
+   （可用 `KOMARI_VERSION` 固定版本；GitHub API 不可用时回退到 `1.5.0-fix1`）；
+2. 用 `execvp` 把 Python 进程替换为 `./komari server`。
 
-> [!WARNING]
-> Komari 是一款自托管的监控/控制程序，仅应部署在你拥有或已获得授权管理的系统上。在未获授权的情况下部署、访问、持久化、执行命令及从事其他滥用行为，用户需要自行承担部署和使用 Komari 的责任。开发者不对未经授权或滥用行为及其后果承担责任。
+运行入口：`python app.py`（Debian 系环境用 `python3 app.py`）。
 
-[文档](https://www.komari.wiki/) | [Telegram 群](https://t.me/komari_monitor)
+可选 `--download-only` 参数：只下载二进制后退出，用于构建期预下载：
 
-## 特性
+```
+pip install -r requirements.txt && (python3 app.py --download-only || python app.py --download-only)
+```
 
-- **实时监控**: 秒级实时数据展示。
-- **轻量高效**：低资源占用，适合各种规模的服务器。
-- **自托管**：完全掌控数据隐私，部署简单。
-- **Web 界面**：直观的监控仪表盘，易于使用。
-- **极强的可扩展性**: 支持自定义主题和插件。
+运行命令：`python3 app.py || python app.py`
 
-## 快速开始
+## 环境变量
 
-| 平台                                                                                                                                                                                                     | 介绍                                                                                                                                   |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| <a href="https://app.rainyun.com/apps/rca/store/6780/NzYxNzAz_"><img src="https://rainyun-apps.cn-nb1.rains3.com/materials/deploy-on-rainyun-cn.svg" alt="Rainyun" width="180"></a>                      | 秒级部署网站、数据库及数百款热门 App，并采用按小时灵活计费。[每月5元，立即部署](https://app.rainyun.com/apps/rca/store/6780/NzYxNzAz_) |
-| <a href="https://apps.fit2cloud.com/1panel/komari"><img src="https://raw.githubusercontent.com/komari-monitor/public/refs/heads/main/images/1panel-logo-blue.png" alt="1Panel Appstore" width="180"></a> | 现代化、开源的Linux 服务器运维管理面板，提供网站、数据库、容器、文件、备份、安全与AI 管理能力，支持应用商店一键部署。                  |
+| 变量 | 说明 | 默认值 |
+|---|---|---|
+| `PORT` | 监听端口 | `25774` |
+| `KOMARI_LISTEN` | 绑定地址 | `0.0.0.0:$PORT` |
+| `KOMARI_VERSION` | 固定版本号，如 `1.5.0-fix1`；留空或 `latest` = 最新 release | 最新 |
+| `KOMARI_DOWNLOAD_URL` | 直接指定二进制下载地址（可填镜像加速） | GitHub 官方地址 |
+| `KOMARI_DATABASE` | SQLite 数据库路径 | `./data/komari.db` |
+| `KOMARI_ARGS` | 附加给 `komari server` 的参数（空格分隔） | 空 |
 
-Docker、二进制文件、源码构建和更新说明，请参阅 [安装指南](https://www.komari.wiki/install/quick-start).
+infrlo 平台的部署细节（构建/运行命令、数据持久化、WebSocket 注意事项）
+见 [doc/deploy-infrlo.md](doc/deploy-infrlo.md)。
 
-## 截图
+## 精简后的文件清单
 
-| 页面         | 截图                                                                                                                                                         |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 主页仪表盘   | <img src="https://b2.akz.moe/awesome-pictures/komari-screenshot/%E4%B8%BB%E9%A1%B5%E4%BB%AA%E8%A1%A8%E7%9B%98.webp" width="800" alt="主页仪表盘">            |
-| 后台仪表盘   | <img src="https://b2.akz.moe/awesome-pictures/komari-screenshot/%E5%90%8E%E5%8F%B0%E4%BB%AA%E8%A1%A8%E7%9B%98.webp" width="800" alt="后台仪表盘">            |
-| 历史图表     | <img src="https://b2.akz.moe/awesome-pictures/komari-screenshot/%E5%8E%86%E5%8F%B2%E5%9B%BE%E8%A1%A8.webp" width="800" alt="历史图表">                       |
-| 网页终端     | <img src="https://b2.akz.moe/awesome-pictures/komari-screenshot/%E7%BD%91%E9%A1%B5%E7%BB%88%E7%AB%AF.webp" width="800" alt="网页终端">                       |
-| 主题可自定义 | <img src="https://b2.akz.moe/awesome-pictures/komari-screenshot/%E4%B8%BB%E9%A2%98%E5%8F%AF%E8%87%AA%E5%AE%9A%E4%B9%89.webp" width="800" alt="主题可自定义"> |
-| 主题市场     | <img src="https://b2.akz.moe/awesome-pictures/komari-screenshot/%E4%B8%BB%E9%A2%98%E5%B8%82%E5%9C%BA.webp" width="800" alt="主题市场">                       |
+以下文件全部保留，其余上游 Komari 源码已在
+"Remove upstream Komari sources, keep runtime-only bootstrap" 提交中删除：
 
-## 赞助商
+| 文件 | 作用 |
+|---|---|
+| `app.py` | 引导脚本：下载二进制 → exec 启动 komari |
+| `requirements.txt` | 空依赖占位，兼容平台默认构建命令 `pip install -r requirements.txt` |
+| `Dockerfile` | 备选 Docker 部署方式（python:3.12-slim + app.py） |
+| `.dockerignore` | 把 Docker 构建上下文限制为上述文件 |
+| `doc/deploy-infrlo.md` | infrlo 部署指南 |
+| `README.md` / `README_zh-cn.md` | 本文档 |
+| `NOTICE` / `LICENSE` | 保留上游署名与 MIT 许可证 |
 
-有意赞助 Komari？请通过 [电子邮箱](mailto:komari@akz.moe) 或 [Telegram](https://t.me/mamomoe) 联系开发者。
+## 许可证
 
-| 赞助商                                                                                                                                                                                           | 描述                                                                                                                                                                                                                |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <a href="https://mooproxy.net/?utm_source=komari"><img src="https://raw.githubusercontent.com/komari-monitor/public/refs/heads/main/images/Mooproxy-logo-transparent.png" alt="mooproxy.net" width="180"></a> | [MooProxy · 动态住宅代理IP低至 $0.20/GB，注册即送 500MB 免费流量，立即体验！](https://mooproxy.net/?utm_source=komari) |
-| <a href="https://axisnow.io/zh?utm=komari"><img src="https://raw.githubusercontent.com/komari-monitor/public/refs/heads/main/images/AxisNow.jpg" alt="AxisNow" width="180"></a> | [自建私有部署CDN \| 订阅式高仿CDN \| 自主可控、灵活组合的CDN网络](https://axisnow.io/zh?utm=komari) |
-| <a href="https://whmcs.as211392.com/aff.php?aff=110"><img src="https://raw.githubusercontent.com/komari-monitor/public/refs/heads/main/images/dreamcloud.png" alt="Dream Cloud" width="180"></a> | 极高性价比解锁直连亚太高防，真高防，不虚标，打死退款                                                                                                                                                                |
-| <a href="https://sharon.io"><img src="https://raw.githubusercontent.com/komari-monitor/public/refs/heads/main/images/sharon-networks.webp" alt="Sharon Networks" width="180"></a>                | 亚太数据中心提供顶级的中国优化网络接入 · 低延时&高带宽&提供Tbps级本地清洗高防服务, 为您的业务保驾护航, 为您的客户提供极致体验. 加入社区 [Telegram群组](https://t.me/SharonNetwork) 可参与公益募捐或群内抽奖免费使用 |
-
-## 贡献者
-
-感谢所有为 Komari 贡献代码、主题、插件、文档、翻译、问题报告或反馈的朋友。
-
-<a href="https://github.com/komari-monitor/komari/graphs/contributors"><img src="https://contributors-img.web.app/image?repo=komari-monitor/komari" alt="Komari 贡献者" width="600"></a>
-
-## 支持项目
-
-如果 Komari 对你有所帮助，欢迎请作者喝一杯奶茶。感谢你的支持！
-
-| TRON Network                                                                |
-| --------------------------------------------------------------------------- |
-| ![TRON](https://b2.akz.moe/awesome-pictures/PixPin_2026-08-07_15-16-52.png) |
+Komari 采用 MIT 许可证；本引导仓库保留上游 `LICENSE` 与 `NOTICE` 以满足署名要求。
