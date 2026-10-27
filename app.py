@@ -13,9 +13,16 @@ infrlo 容器默认命令为:
     25774，并在 80/3000/5000/8000/8080 上做 TCP 转发兜底，
     适配平台网关固定转发到某个端口的场景。
 
+说明：
+  - 默认行为是拉取上游最新 release：`KOMARI_VERSION` 为空或设为 `latest` 时，
+    自动使用 GitHub Releases 的最新 tag。
+  - 这是一个 runtime/bootstrap 包装层；如果你只需要��下载并运行 komari 最新版”，
+    那么 Go 源码不是运行所需依赖，可以不保留或不参与部署。
+  - 若你需要自己编译二进制，才需要保留 Go 源码和构建链。
+
 可用环境变量（均在 infrlo 容器设置页配置）:
   PORT                  平台注入的监听端口（默认 25774）
-  KOMARI_VERSION        指定版本，如 1.5.0-fix1（默认自动取最新 release）
+  KOMARI_VERSION        指定版本，如 1.5.0-fix1；为空或 `latest` 时自动取最新 release
   KOMARI_DOWNLOAD_URL   直接指定二进制下载地址（可用 ghproxy 等镜像加速）
   KOMARI_LISTEN         监听地址，默认 0.0.0.0:$PORT
   KOMARI_DATABASE       SQLite 文件路径，默认 ./data/komari.db
@@ -32,7 +39,8 @@ import urllib.request
 
 REPO = "komari-monitor/komari"
 BIN = "./komari"
-# 查询最新版本失败时的兜底版本（与上游 release 对齐）
+# 默认走最新版本；该兜底值仅用于 GitHub API 失败时，避免容器完全起不来。
+# 正常情况下，空值或 `latest` 都会自动解析最新 release tag。
 FALLBACK_VERSION = "1.5.0-fix1"
 
 ARCH_MAP = {
@@ -52,6 +60,7 @@ def detect_arch() -> str:
 
 
 def resolve_version() -> str:
+    """返回需要拉取的 release tag。空值/`latest` 时按最新 release 处理。"""
     explicit = os.environ.get("KOMARI_VERSION", "").strip()
     if explicit and explicit != "latest":
         return explicit
@@ -61,7 +70,10 @@ def resolve_version() -> str:
             headers={"User-Agent": "komari-bootstrap"},
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.load(resp).get("tag_name") or FALLBACK_VERSION
+            tag = json.load(resp).get("tag_name")
+            if tag:
+                return tag
+            return FALLBACK_VERSION
     except Exception as exc:  # 网络受限时兜底，保证容器能起来
         print(f"[komari] query latest version failed ({exc}), fallback to {FALLBACK_VERSION}")
         return FALLBACK_VERSION
