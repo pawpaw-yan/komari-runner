@@ -5,27 +5,39 @@ infrlo 平台的 Python 应用默认提供两条命令：**Build Command**
 
 Komari 是 Go 预编译单二进制程序，前端已内嵌，运行时只依赖一个可写的工作目录。
 `app.py` 在运行期从 GitHub Releases 下载对应架构的二进制（实测约 2 秒），
-然后用 `execv` 把 `python app.py` 进程替换为 `./komari server`。
+启动后把它绑在 `127.0.0.1:$PORT`，并在**所有常见网关端口**
+（`$PORT` + 3000/5000/8000/8080/8888，IPv4+IPv6 双栈）上做原始 TCP 转发。
 
 **两条命令保持平台默认即可，无需修改。**
 
-## 实测记录（2026-10-27，komari 1.6.1）
+## 实测记录（2026-10-27/28，komari 1.6.1）
 
 - Run Command 用平台默认 `python app.py` 可用：运行环境有 `python` 命令
   （构建环境没有，见下文「构建日志里可以忽略的 ERR」）。
 - 运行期下载 `komari-linux-amd64`（28.6MB）约 2 秒完成，无需构建期预下载。
-- komari 正常启动并监听 `0.0.0.0:25774`。
+- 平台**不注入 `PORT` 环境变量**；设了 `PORT=8080` 后 komari 正常监听
+  `0.0.0.0:8080`，但边缘网关仍返回 Bad Gateway——网关拨的端口/协议栈
+  与应用绑定的对不上，且从容器内无从得知网关的具体行为，于是改为
+  多端口兜底转发方案（见下）。
 
 ## 端口与 Bad Gateway（关键）
 
-实测平台未注入 `PORT` 环境变量，komari 按默认值监听 `0.0.0.0:25774`。
-若平台网关转发到别的端口，访问就会返回 **Bad Gateway**。对齐方法（二选一）：
+`app.py` 现在自动兜底：komari 绑 `127.0.0.1:$PORT`（默认 8080），Python 进程
+同时在 `$PORT` 和 3000/5000/8000/8080/8888 上监听并透传（含 WebSocket）。
+网关拨哪个端口都能命中，一般**无需任何端口配置**。
 
-1. 在应用 Settings 里找端口/Port 设置，改成 `25774`；
-2. 或在环境变量里加 `PORT=<平台期望端口>`（如 `PORT=8080`），`app.py` 会自动跟随。
+补充说明：
 
-对齐后先用平台分配的 `*.infrlo.com` 域名验证面板能打开，再配自定义域名——
-自定义域名需要在 Settings 里绑定到该应用，否则边缘网关不认识 Host，同样 502。
+- 想改主端口：环境变量 `PORT=<端口>`；想增减兜底端口：`KOMARI_EXTRA_PORTS=9000,9001`。
+- `KOMARI_LISTEN` 可把 komari 直接绑到 `0.0.0.0`（此时不需要转发，但网关端口
+  仍必须与 komari 绑定端口一致才能访问）。
+
+## 域名与 404
+
+- **Bad Gateway**：域名已路由到应用，但网关拨不上容器端口。多端口版部署后应消失。
+- **`404 page not found`（纯文本）**：这是 infrlo 边缘网关自己的 Go 默认 404，
+  说明该主机名**没有路由到任何应用**（komari 在根路径只返回安装向导，不会 404）。
+  去 Overview 页找平台分配的 `*.infrlo.com` 访问域名，先用它验证，再绑自定义域名。
 
 ## 构建日志里可以忽略的 ERR
 
@@ -50,10 +62,11 @@ pip install -r requirements.txt && (python3 app.py --download-only || true)
 
 | 变量 | 说明 | 默认值 |
 |---|---|---|
-| `PORT` | 监听端口（平台注入则自动跟随） | `25774` |
+| `PORT` | komari 主端口（自动加入转发列表） | `8080` |
+| `KOMARI_EXTRA_PORTS` | 额外转发端口，逗号分隔；默认 3000/5000/8000/8080/8888 | 内置默认 |
 | `KOMARI_VERSION` | 指定版本号，如 `1.6.1` | 自动取最新 release |
 | `KOMARI_DOWNLOAD_URL` | 直接指定二进制下载地址，可填 ghproxy 等镜像加速 | GitHub 官方地址 |
-| `KOMARI_LISTEN` | 监听地址，如 `0.0.0.0:8080` | `0.0.0.0:$PORT` |
+| `KOMARI_LISTEN` | komari 绑定地址，如 `0.0.0.0:8080` | `127.0.0.1:$PORT` |
 | `KOMARI_DATABASE` | SQLite 文件路径 | `./data/komari.db` |
 | `KOMARI_ARGS` | 附加给 `komari server` 的参数（空格分隔） | 空 |
 
