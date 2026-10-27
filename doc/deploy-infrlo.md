@@ -23,8 +23,8 @@ Komari 是 Go 预编译单二进制程序，前端已内嵌，运行时只依赖
 ## 端口与 Bad Gateway（关键）
 
 `app.py` 现在自动兜底：komari 绑 `127.0.0.1:$PORT`（默认 8080），Python 进程
-同时在 `$PORT` 和 3000/5000/8000/8080/8888 上监听并透传（含 WebSocket）。
-网关拨哪个端口都能命中，一般**无需任何端口配置**。
+同时在 `$PORT` 和 80/3000/5000/8000/8080/8888/25774/30033 上监听并透传
+（含 WebSocket）。网关拨哪个端口都能命中，一般**无需任何端口配置**。
 
 补充说明：
 
@@ -63,7 +63,7 @@ pip install -r requirements.txt && (python3 app.py --download-only || true)
 | 变量 | 说明 | 默认值 |
 |---|---|---|
 | `PORT` | komari 主端口（自动加入转发列表） | `8080` |
-| `KOMARI_EXTRA_PORTS` | 额外转发端口，逗号分隔；默认 3000/5000/8000/8080/8888 | 内置默认 |
+| `KOMARI_EXTRA_PORTS` | 追加转发端口，逗号分隔（与默认列表叠加） | `80,3000,5000,8000,8080,8888,25774,30033` |
 | `KOMARI_VERSION` | 指定版本号，如 `1.6.1` | 自动取最新 release |
 | `KOMARI_DOWNLOAD_URL` | 直接指定二进制下载地址，可填 ghproxy 等镜像加速 | GitHub 官方地址 |
 | `KOMARI_LISTEN` | komari 绑定地址，如 `0.0.0.0:8080` | `127.0.0.1:$PORT` |

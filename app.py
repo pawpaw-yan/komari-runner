@@ -41,7 +41,8 @@ BIN = "./komari"
 FALLBACK_VERSION = "1.6.1"
 
 # The edge gateway may dial any of these; $PORT is added at runtime.
-DEFAULT_EXTRA_PORTS = (3000, 5000, 8000, 8080, 8888)
+# 80/30033/25774 were listened by earlier versions of this bootstrap and kept.
+DEFAULT_EXTRA_PORTS = (80, 3000, 5000, 8000, 8080, 8888, 25774, 30033)
 
 ARCH_MAP = {
     "x86_64": "amd64",
@@ -108,13 +109,13 @@ def download_binary() -> None:
 
 
 def parse_ports() -> list[int]:
-    """Primary port first, then the extra gateway candidates, deduplicated."""
+    """Primary port first, then extra and default gateway candidates, deduplicated."""
     port = int(os.environ.get("PORT", "8080").strip() or "8080")
     extra = os.environ.get("KOMARI_EXTRA_PORTS", "").strip()
     ports = [port]
-    for p in extra.split(",") if extra else DEFAULT_EXTRA_PORTS:
-        p = p.strip()
-        if p and p.isdigit() and int(p) != port:
+    for p in (extra.split(",") if extra else []) + list(DEFAULT_EXTRA_PORTS):
+        p = str(p).strip()
+        if p.isdigit() and int(p) not in ports:
             ports.append(int(p))
     return ports
 

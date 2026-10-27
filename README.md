@@ -14,9 +14,9 @@ source tree; the upstream sources live in the original repository.
    `1.6.1` if the GitHub API is unreachable)
 2. starts `./komari server` bound to the loopback interface
 3. proxies every plausible platform gateway port (`$PORT` plus
-   3000/5000/8000/8080/8888, IPv4+IPv6) to komari via raw TCP forwarding,
-   so the edge gateway connects no matter which port it dials
-   (WebSocket passes through untouched)
+   80/3000/5000/8000/8080/8888/25774/30033, IPv4+IPv6) to komari via raw
+   TCP forwarding, so the edge gateway connects no matter which port it
+   dials (WebSocket passes through untouched)
 
 Runtime entrypoint: `python app.py` (or `python3 app.py` on Debian-based images).
 
@@ -34,7 +34,7 @@ Run command: `python3 app.py || python app.py`
 | Variable | Purpose | Default |
 |---|---|---|
 | `PORT` | Primary komari port (included in the proxy list) | `8080` |
-| `KOMARI_EXTRA_PORTS` | Extra proxied ports, comma-separated | `3000,5000,8000,8080,8888` |
+| `KOMARI_EXTRA_PORTS` | Extra proxied ports, comma-separated (added to the defaults) | `80,3000,5000,8000,8080,8888,25774,30033` |
 | `KOMARI_LISTEN` | Bind address | `0.0.0.0:$PORT` |
 | `KOMARI_VERSION` | Pin a release tag, e.g. `1.5.0-fix1`; `latest`/empty = latest release | latest |
 | `KOMARI_DOWNLOAD_URL` | Direct binary URL (e.g. a mirror) | GitHub official URL |

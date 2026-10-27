@@ -10,8 +10,8 @@
 1. 启动时从 `komari-monitor/komari` 的 GitHub Releases 下载最新预编译二进制
    （可用 `KOMARI_VERSION` 固定版本；GitHub API 不可用时回退到 `1.5.0-fix1`）；
 2. 把 komari 绑定到回环地址，并在所有常见平台网关端口
-   （`$PORT` + 3000/5000/8000/8080/8888，IPv4+IPv6 双栈）上做原始 TCP 转发，
-   网关拨任何端口都能连上（WebSocket 原样透传）。
+   （`$PORT` + 80/3000/5000/8000/8080/8888/25774/30033，IPv4+IPv6 双栈）上做
+   原始 TCP 转发，网关拨任何端口都能连上（WebSocket 原样透传）。
 
 运行入口：`python app.py`（Debian 系环境用 `python3 app.py`）。
 
@@ -28,7 +28,7 @@ pip install -r requirements.txt && (python3 app.py --download-only || true)
 | 变量 | 说明 | 默认值 |
 |---|---|---|
 | `PORT` | komari 主端口（自动加入转发列表） | `8080` |
-| `KOMARI_EXTRA_PORTS` | 额外转发端口，逗号分隔 | `3000,5000,8000,8080,8888` |
+| `KOMARI_EXTRA_PORTS` | 追加转发端口，逗号分隔（与默认列表叠加） | `80,3000,5000,8000,8080,8888,25774,30033` |
 | `KOMARI_LISTEN` | komari 绑定地址 | `127.0.0.1:$PORT` |
 | `KOMARI_VERSION` | 固定版本号，如 `1.5.0-fix1`；留空或 `latest` = 最新 release | 最新 |
 | `KOMARI_DOWNLOAD_URL` | 直接指定二进制下载地址（可填镜像加速） | GitHub 官方地址 |
