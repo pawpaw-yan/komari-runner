@@ -9,9 +9,8 @@
 
 1. 启动时从 `komari-monitor/komari` 的 GitHub Releases 下载最新预编译二进制
    （可用 `KOMARI_VERSION` 固定版本；GitHub API 不可用时回退到 `1.5.0-fix1`）；
-2. 把 komari 绑定到回环地址，并在所有常见平台网关端口
-   （`$PORT` + 80/3000/5000/8000/8080/8888/25774/30033，IPv4+IPv6 双栈）上做
-   原始 TCP 转发，网关拨任何端口都能连上（WebSocket 原样透传）。
+2. 把 komari 绑定到回环地址，并在一个端口上做原始 TCP 转发（IPv4+IPv6 双栈）：
+   设了 `PORT` 用 `PORT`，否则用平台实测网关端口 5000；WebSocket 原样透传。
 
 运行入口：`python app.py`（Debian 系环境用 `python3 app.py`）。
 
@@ -27,8 +26,8 @@ pip install -r requirements.txt && (python3 app.py --download-only || true)
 
 | 变量 | 说明 | 默认值 |
 |---|---|---|
-| `PORT` | komari 主端口（自动加入转发列表） | `8080` |
-| `KOMARI_EXTRA_PORTS` | 追加转发端口，逗号分隔（与默认列表叠加） | `80,3000,5000,8000,8080,8888,25774,30033` |
+| `PORT` | 监听端口；不设则用平台实测网关端口 | `5000` |
+| `KOMARI_EXTRA_PORTS` | 追加转发端口，逗号分隔（极少需要） | 空 |
 | `KOMARI_VERBOSE` | 设为 `1` 时 komari 的 Info 日志原样透传 | 关闭（过滤） |
 
 官方 komari 二进制永远以 Info 级别写 stdout，**不读** `LOG_LEVEL` 等日志级别

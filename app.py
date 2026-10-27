@@ -3,12 +3,12 @@
 
 This container does not compile the Go project. It downloads the published
 komari release binary for the current architecture, starts it bound to the
-loopback interface, and proxies every plausible platform gateway port to it.
+loopback interface, and proxies one listening port to it.
 
-Why the proxy: container platforms route their edge gateway to a fixed port
-(often 8080/3000) or to $PORT, sometimes dialing the IPv6 loopback. Komari
-can only bind one address, so we can't know which port the gateway dials.
-raw TCP forwarding keeps WebSocket (agent connections) working.
+Why the proxy: komari binds a single address; the platform gateway dials a
+fixed container port (infrlo: 5000, verified live). The bootstrap listens on
+that port (or $PORT when set) and raw-forwards to komari, which keeps
+WebSocket (agent connections) working.
 
 Why the log filter: the official binary always logs at Info to stdout and
 reads no log-level env var, while a busy panel easily produces tens of
@@ -16,13 +16,13 @@ thousands of lines per hour. This bootstrap filters komari's stdout to
 Warn+ (counting suppressed Info lines) unless KOMARI_VERBOSE=1.
 
 Environment variables:
-  PORT                 Primary listening port (default: 8080)
+  PORT                 Listening port; overrides the default when set
   KOMARI_LISTEN        Komari bind address, defaults to 127.0.0.1:$PORT
   KOMARI_VERSION       Optional pinned tag, e.g. 1.6.1; empty/latest => latest release
   KOMARI_DOWNLOAD_URL  Optional direct binary URL
   KOMARI_DATABASE      SQLite file path, default ./data/komari.db
   KOMARI_ARGS          Extra args passed to ./komari server
-  KOMARI_EXTRA_PORTS   Comma-separated extra ports to proxy (added to the defaults)
+  KOMARI_EXTRA_PORTS   Comma-separated extra ports to proxy (rarely needed)
   KOMARI_VERBOSE       Set to 1 to pass komari's Info logs through unfiltered
 """
 
@@ -47,9 +47,9 @@ REPO = "komari-monitor/komari"
 BIN = "./komari"
 FALLBACK_VERSION = "1.6.1"
 
-# The edge gateway may dial any of these; $PORT is added at runtime.
-# 80/30033/25774 were listened by earlier versions of this bootstrap and kept.
-DEFAULT_EXTRA_PORTS = (80, 3000, 5000, 8000, 8080, 8888, 25774, 30033)
+# Port the platform edge gateway dials (verified live on infrlo via the
+# first-connection WARNING). PORT overrides it when set.
+DEFAULT_PORT = 5000
 
 # komari console lines look like "2026/10/27 16:20:57 [INFO/SERVER] message".
 # Stderr and anything without this marker is treated as Warn+ and passed through.
@@ -120,15 +120,9 @@ def download_binary() -> None:
 
 
 def parse_ports() -> list[int]:
-    """Primary port first, then extra and default gateway candidates, deduplicated."""
-    port = int(os.environ.get("PORT", "8080").strip() or "8080")
-    extra = os.environ.get("KOMARI_EXTRA_PORTS", "").strip()
-    ports = [port]
-    for p in (extra.split(",") if extra else []) + list(DEFAULT_EXTRA_PORTS):
-        p = str(p).strip()
-        if p.isdigit() and int(p) not in ports:
-            ports.append(int(p))
-    return ports
+    """$PORT when set, otherwise the platform's default gateway port."""
+    port = os.environ.get("PORT", "").strip()
+    return [int(port) if port.isdigit() and port else DEFAULT_PORT]
 
 
 def build_cmd() -> list[str]:

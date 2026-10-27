@@ -13,10 +13,9 @@ source tree; the upstream sources live in the original repository.
    `komari-monitor/komari` (pinned via `KOMARI_VERSION`, falls back to
    `1.6.1` if the GitHub API is unreachable)
 2. starts `./komari server` bound to the loopback interface
-3. proxies every plausible platform gateway port (`$PORT` plus
-   80/3000/5000/8000/8080/8888/25774/30033, IPv4+IPv6) to komari via raw
-   TCP forwarding, so the edge gateway connects no matter which port it
-   dials (WebSocket passes through untouched)
+3. listens on **one** port and raw-forwards it to komari (IPv4+IPv6,
+   WebSocket passes through untouched): `$PORT` when set, otherwise the
+   platform's verified gateway port (5000 on infrlo)
 
 Runtime entrypoint: `python app.py` (or `python3 app.py` on Debian-based images).
 
@@ -33,8 +32,8 @@ Run command: `python3 app.py || python app.py`
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `PORT` | Primary komari port (included in the proxy list) | `8080` |
-| `KOMARI_EXTRA_PORTS` | Extra proxied ports, comma-separated (added to the defaults) | `80,3000,5000,8000,8080,8888,25774,30033` |
+| `PORT` | Listening port; falls back to the platform's verified gateway port | `5000` |
+| `KOMARI_EXTRA_PORTS` | Extra proxied ports, comma-separated (rarely needed) | empty |
 | `KOMARI_VERBOSE` | `1` = pass komari's Info logs through unfiltered | off (filtered) |
 
 The official binary always logs at Info to stdout and reads no log-level env

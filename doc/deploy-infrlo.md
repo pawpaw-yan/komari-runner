@@ -6,7 +6,7 @@ infrlo 平台的 Python 应用默认提供两条命令：**Build Command**
 Komari 是 Go 预编译单二进制程序，前端已内嵌，运行时只依赖一个可写的工作目录。
 `app.py` 在运行期从 GitHub Releases 下载对应架构的二进制（实测约 2 秒），
 启动后把它绑在 `127.0.0.1:$PORT`，并在**所有常见网关端口**
-（`$PORT` + 3000/5000/8000/8080/8888，IPv4+IPv6 双栈）上做原始 TCP 转发。
+（`$PORT` 或平台实测网关端口 **5000**，IPv4+IPv6 双栈）上做原始 TCP 转发。
 
 **两条命令保持平台默认即可，无需修改。**
 
@@ -22,13 +22,14 @@ Komari 是 Go 预编译单二进制程序，前端已内嵌，运行时只依赖
 
 ## 端口与 Bad Gateway（关键）
 
-`app.py` 现在自动兜底：komari 绑 `127.0.0.1:$PORT`（默认 8080），Python 进程
-同时在 `$PORT` 和 80/3000/5000/8000/8080/8888/25774/30033 上监听并透传
-（含 WebSocket）。网关拨哪个端口都能命中，一般**无需任何端口配置**。
+`app.py` 现在自动兜底：komari 绑 `127.0.0.1:$PORT`，Python 在**一个**端口上
+监听并透传（含 WebSocket）——设了 `PORT` 用 `PORT`，否则用平台实测网关端口
+**5000**（2026-10-28 通过首连 WARNING 实测确认）。一般**无需任何端口配置**，
+且 infrlo 上**不要设 `PORT=8080`**（网关拨 5000，会 502）。
 
 补充说明：
 
-- 想改主端口：环境变量 `PORT=<端口>`；想增减兜底端口：`KOMARI_EXTRA_PORTS=9000,9001`。
+- `KOMARI_EXTRA_PORTS=<端口,端口>` 可追加多个监听端口（极少需要）；
 - `KOMARI_LISTEN` 可把 komari 直接绑到 `0.0.0.0`（此时不需要转发，但网关端口
   仍必须与 komari 绑定端口一致才能访问）。
 
@@ -63,7 +64,7 @@ pip install -r requirements.txt && (python3 app.py --download-only || true)
 | 变量 | 说明 | 默认值 |
 |---|---|---|
 | `PORT` | komari 主端口（自动加入转发列表） | `8080` |
-| `KOMARI_EXTRA_PORTS` | 追加转发端口，逗号分隔（与默认列表叠加） | `80,3000,5000,8000,8080,8888,25774,30033` |
+| `KOMARI_EXTRA_PORTS` | 追加转发端口，逗号分隔（极少需要） | 空 |
 | `KOMARI_VERBOSE` | 设为 `1` 时 komari 的 Info 日志原样透传（见下文日志说明） | 关闭（过滤） |
 | `KOMARI_VERSION` | 指定版本号，如 `1.6.1` | 自动取最新 release |
 | `KOMARI_DOWNLOAD_URL` | 直接指定二进制下载地址，可填 ghproxy 等镜像加速 | GitHub 官方地址 |
