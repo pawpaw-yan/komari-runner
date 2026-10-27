@@ -1,2 +1,6 @@
 # komari 是预编译 Go 二进制，无 Python 依赖。
+# 这个仓库不使用 Quart / Flask / FastAPI 等 Python Web 框架。
 # 本文件仅用于兼容 infrlo 平台默认构建命令 `pip install -r requirements.txt`。
+# 若平台报 `ModuleNotFoundError: No module named 'quart'`，说明部署目标不是当前 komari 仓库。
+#
+# 这里保持为空，避免错误安装任何 Python 依赖。
