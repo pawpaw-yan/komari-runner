@@ -1,19 +1,9 @@
-FROM alpine:3.21
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Docker buildx 会在构建时自动填充这些变量
-ARG TARGETOS
-ARG TARGETARCH
+COPY app.py .
 
-RUN apk add --no-cache ca-certificates curl tzdata
+ENV PYTHONUNBUFFERED=1
 
-COPY --chmod=755 komari-${TARGETOS}-${TARGETARCH} /app/komari
-
-ENV GIN_MODE=release
-ENV KOMARI_LISTEN=0.0.0.0:25774
-ENV GODEBUG=disablethp=1
-
-EXPOSE 25774
-
-CMD ["/app/komari", "server"]
+CMD ["python", "app.py"]
