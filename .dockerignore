@@ -1,20 +1,7 @@
-# Keep only the runtime bootstrap files in Docker build context.
-.git
-.github
-.gitignore
-**/*.go
-**/*.mod
-**/*.sum
-**/*.yaml
-**/*.yml
-**/*.sh
-**/*.md
-**/cmd/**
-**/internal/**
-**/database/**
-**/pkg/**
-**/utils/**
-**/web/**
-**/docs/**
+# The runtime bootstrap needs only these files; everything else is excluded
+# from the Docker build context.
+*
+!app.py
+!requirements.txt
 __pycache__/
 *.pyc
