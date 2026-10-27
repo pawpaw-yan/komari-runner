@@ -10,6 +10,11 @@ Why the proxy: container platforms route their edge gateway to a fixed port
 can only bind one address, so we can't know which port the gateway dials.
 raw TCP forwarding keeps WebSocket (agent connections) working.
 
+Why the log filter: the official binary always logs at Info to stdout and
+reads no log-level env var, while a busy panel easily produces tens of
+thousands of lines per hour. This bootstrap filters komari's stdout to
+Warn+ (counting suppressed Info lines) unless KOMARI_VERBOSE=1.
+
 Environment variables:
   PORT                 Primary listening port (default: 8080)
   KOMARI_LISTEN        Komari bind address, defaults to 127.0.0.1:$PORT
@@ -18,11 +23,13 @@ Environment variables:
   KOMARI_DATABASE      SQLite file path, default ./data/komari.db
   KOMARI_ARGS          Extra args passed to ./komari server
   KOMARI_EXTRA_PORTS   Comma-separated extra ports to proxy (added to the defaults)
+  KOMARI_VERBOSE       Set to 1 to pass komari's Info logs through unfiltered
 """
 
 import json
 import os
 import platform
+import re
 import socket
 import stat
 import subprocess
@@ -43,6 +50,10 @@ FALLBACK_VERSION = "1.6.1"
 # The edge gateway may dial any of these; $PORT is added at runtime.
 # 80/30033/25774 were listened by earlier versions of this bootstrap and kept.
 DEFAULT_EXTRA_PORTS = (80, 3000, 5000, 8000, 8080, 8888, 25774, 30033)
+
+# komari console lines look like "2026/10/27 16:20:57 [INFO/SERVER] message".
+# Stderr and anything without this marker is treated as Warn+ and passed through.
+KOMARI_LINE = re.compile(r"^\S+ \S+ \[(DEBUG|INFO|WARN|ERROR)/")
 
 ARCH_MAP = {
     "x86_64": "amd64",
@@ -136,6 +147,52 @@ def build_cmd() -> list[str]:
     return cmd
 
 
+class LevelFilter:
+    """Forward komari stdout to the real stdout, dropping Info/Debug lines.
+
+    Lines arrive one write() per line, so the pending count lives on the
+    instance: a WARN/ERROR line flushes it first, keeping the suppress note
+    right above the line it gives context to. A heartbeat every 10 minutes
+    reports the total swallowed, proving the filter is alive.
+    """
+
+    def __init__(self) -> None:
+        self.suppressed = 0   # total since last heartbeat
+        self._pending = 0     # suppressed since last inline mention
+        self._lock = threading.Lock()
+
+    def write(self, text: str) -> None:
+        passthrough = []
+        for line in text.splitlines(keepends=True):
+            m = KOMARI_LINE.match(line)
+            if m and m.group(1) in ("DEBUG", "INFO"):
+                with self._lock:
+                    self.suppressed += 1
+                    self._pending += 1
+                continue
+            with self._lock:
+                pending, self._pending = self._pending, 0
+            if pending:
+                passthrough.append(f"[komari] {pending} info line(s) suppressed\n")
+            passthrough.append(line)
+        if passthrough:
+            sys.__stdout__.write("".join(passthrough))
+            sys.__stdout__.flush()
+
+    def flush(self) -> None:
+        sys.__stdout__.flush()
+
+    def heartbeat(self) -> None:
+        while True:
+            time.sleep(600)
+            with self._lock:
+                if self.suppressed:
+                    print(f"[komari] {self.suppressed} info line(s) suppressed "
+                          f"in the last 10 min (set KOMARI_VERBOSE=1 to see them)",
+                          flush=True)
+                    self.suppressed = 0
+
+
 def pump(src: socket.socket, dst: socket.socket) -> None:
     try:
         while True:
@@ -166,12 +223,19 @@ def proxy_listener(listen_port: int, target_host: str, target_port: int) -> None
             log(f"port {listen_port} unavailable ({e}), gateway likely dials another one")
             return
     log(f"proxy listening on port {listen_port} -> {target_host}:{target_port}")
+    first = True
 
     while True:
         try:
             client, addr = srv.accept()
         except OSError:
             return
+        if first:
+            # Log at most once per port: this is how you learn which port the
+            # platform gateway actually dials.
+            log(f"WARNING: first connection on port {listen_port} from {addr[0]}:{addr[1]} "
+                f"-> this is the effective gateway port")
+            first = False
         try:
             upstream = socket.create_connection((target_host, target_port), timeout=10)
         except OSError:
@@ -192,7 +256,9 @@ def main() -> None:
 
     cmd = build_cmd()
     log(f"starting: {' '.join(cmd)}")
-    komari = subprocess.Popen(cmd)
+    komari = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True,
+                              errors="replace", bufsize=1)
 
     # Give komari a moment, then check whether it came up.
     time.sleep(2)
@@ -201,9 +267,25 @@ def main() -> None:
         sys.exit(komari.returncode or 1)
 
     # Komari binds the loopback only; re-expose it on every plausible gateway
-    # port (IPv4+IPv6). execvp is no longer possible: this process must stay
-    # alive to run the proxies.
+    # port (IPv4+IPv6). This process must stay alive to run the proxies.
     target_host, target_port = "127.0.0.1", parse_ports()[0]
+
+    verbose = os.environ.get("KOMARI_VERBOSE", "").strip() == "1"
+    flt = LevelFilter()
+
+    def relay() -> None:
+        # In verbose mode komari's lines go straight to the real stdout;
+        # otherwise LevelFilter drops Info/Debug and counts them.
+        stream = sys.__stdout__ if verbose else flt
+        for line in iter(komari.stdout.readline, ""):
+            stream.write(line)
+
+    if not verbose:
+        threading.Thread(target=flt.heartbeat, daemon=True).start()
+    threading.Thread(target=relay, daemon=True).start()
+    log("KOMARI_VERBOSE=1: Info logs pass through unfiltered" if verbose
+        else "filtering komari Info logs (KOMARI_VERBOSE=1 to disable)")
+
     for p in parse_ports():
         threading.Thread(target=proxy_listener, args=(p, target_host, target_port),
                          daemon=True).start()

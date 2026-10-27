@@ -64,11 +64,33 @@ pip install -r requirements.txt && (python3 app.py --download-only || true)
 |---|---|---|
 | `PORT` | komari 主端口（自动加入转发列表） | `8080` |
 | `KOMARI_EXTRA_PORTS` | 追加转发端口，逗号分隔（与默认列表叠加） | `80,3000,5000,8000,8080,8888,25774,30033` |
+| `KOMARI_VERBOSE` | 设为 `1` 时 komari 的 Info 日志原样透传（见下文日志说明） | 关闭（过滤） |
 | `KOMARI_VERSION` | 指定版本号，如 `1.6.1` | 自动取最新 release |
 | `KOMARI_DOWNLOAD_URL` | 直接指定二进制下载地址，可填 ghproxy 等镜像加速 | GitHub 官方地址 |
 | `KOMARI_LISTEN` | komari 绑定地址，如 `0.0.0.0:8080` | `127.0.0.1:$PORT` |
 | `KOMARI_DATABASE` | SQLite 文件路径 | `./data/komari.db` |
 | `KOMARI_ARGS` | 附加给 `komari server` 的参数（空格分隔） | 空 |
+
+## 日志
+
+- **官方 komari 二进制不支持调日志级别**：环境变量 `LOG_LEVEL`/`KOMARI_LOG_LEVEL`
+  对它无效（那是早先 fork 自编译版的行为）。官方版永远以 Info 级别写 stdout，
+  忙碌的面板几小时就能产生数万行。
+- 因此引导脚本默认在 Python 层过滤：komari 的 DEBUG/INFO 行被丢弃（带计数），
+  WARN/ERROR 与无标记行（panic、traceback 等）原样透传；每 10 分钟输出一次
+  `[komari] N info line(s) suppressed in the last 10 min` 心跳，证明过滤器在工作。
+- 需要看完整 Info 日志排查问题时，在环境变量里设 `KOMARI_VERBOSE=1` 并重新部署。
+
+## 查生效端口
+
+`app.py` 启动后 Logs 里会列出所有绑定的转发端口；网关**真正使用**的端口在
+第一个连接进来时确认，每端口只记一次：
+
+```
+[komari] WARNING: first connection on port 8080 from x.x.x.x:12345 -> this is the effective gateway port
+```
+
+部署后打开一次面板，看这行就知道网关拨的是哪个端口。
 
 ## 排错
 

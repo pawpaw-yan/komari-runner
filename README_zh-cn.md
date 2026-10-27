@@ -29,6 +29,12 @@ pip install -r requirements.txt && (python3 app.py --download-only || true)
 |---|---|---|
 | `PORT` | komari 主端口（自动加入转发列表） | `8080` |
 | `KOMARI_EXTRA_PORTS` | 追加转发端口，逗号分隔（与默认列表叠加） | `80,3000,5000,8000,8080,8888,25774,30033` |
+| `KOMARI_VERBOSE` | 设为 `1` 时 komari 的 Info 日志原样透传 | 关闭（过滤） |
+
+官方 komari 二进制永远以 Info 级别写 stdout，**不读** `LOG_LEVEL` 等日志级别
+环境变量，因此引导脚本默认在 Python 层过滤：DEBUG/INFO 行丢弃（带计数，每
+10 分钟心跳汇总），WARN/ERROR 及无标记行（panic 等）透传。每个转发端口的
+第一个连接会打一条 WARNING，用来确认网关实际使用的端口。
 | `KOMARI_LISTEN` | komari 绑定地址 | `127.0.0.1:$PORT` |
 | `KOMARI_VERSION` | 固定版本号，如 `1.5.0-fix1`；留空或 `latest` = 最新 release | 最新 |
 | `KOMARI_DOWNLOAD_URL` | 直接指定二进制下载地址（可填镜像加速） | GitHub 官方地址 |
