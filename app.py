@@ -21,6 +21,11 @@ import subprocess
 import sys
 import urllib.request
 
+# Platform log collectors pipe stdout, which makes Python block-buffer it.
+# Without this every print() below is lost when execvp replaces the process.
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 REPO = "komari-monitor/komari"
 BIN = "./komari"
 FALLBACK_VERSION = "1.5.0-fix1"
@@ -111,7 +116,9 @@ def main() -> None:
         return
 
     cmd = build_cmd()
-    print(f"[komari] starting: {' '.join(cmd)}")
+    print(f"[komari] starting: {' '.join(cmd)}", flush=True)
+    sys.stdout.flush()
+    sys.stderr.flush()
     os.execvp(BIN, cmd)
 
 

@@ -36,9 +36,14 @@ Komari 是 Go 预编译单二进制程序，**前端已内嵌**，运行时只�
 
 ## 排错
 
+- **Logs 页完全空白（连 Error 都是 0）**：不代表程序没输出。先点 Refresh 等一两分钟；
+  旧版引导脚本的 print 因 Python 管道块缓冲 + execvp 会被整体丢弃（已修复，需重新部署）。
+  若重新部署后仍空白，说明进程压根没跑起来或立刻崩溃，转下一条。
 - **平台显示 ONLINE / Deployment Successful 但打不开（502）**：只代表容器进程在跑，
   不代表 komari 已监听。去 Logs 页看真实日志；最常见原因是 `python: not found`
-  （改用 `python3`）或下载二进制失败（设 `KOMARI_DOWNLOAD_URL` 走镜像）。
+  （改用 `python3`）、下载二进制失败（设 `KOMARI_DOWNLOAD_URL` 走镜像）或
+  首次下载 20MB+ 二进制尚未完成——默认构建命令不含预下载，首次启动可能要等 1-2 分钟。
+  建议把 Build Command 改为含 `--download-only` 的预下载版本（见上文配置表）。
 - **容器内完全没有 python3** 的兜底方案：不依赖 Python，直接在
   Build Command 用 curl/wget 拉二进制（x86 容器）：
   `curl -fsSL -o komari https://github.com/komari-monitor/komari/releases/download/1.5.0-fix1/komari-linux-amd64 && chmod +x komari`
